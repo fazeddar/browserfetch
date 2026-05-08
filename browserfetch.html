@@ -87,7 +87,7 @@
     <button class="prev-btn" id="prevBtn">&#x25BA; preview</button>
     <p class="notes">
       Cannot see the bar? Press <kbd>Ctrl+Shift+B</kbd> (or <kbd>Cmd+Shift+B</kbd>).<br>
-      Hosted helper URL: <b>https://tools.oliverstools.bigguy8014.workers.dev/browserfetch.html</b><br>
+      Hosted helper URL: <b>https://browserfetch.bigguy8014.workers.dev/browserfetch</b><br>
       The bookmarklet opens a separate draggable tool window and passes the current page URL, title, and selected text into it.
     </p>
   </div>
@@ -550,8 +550,14 @@ function browserfetch() {
     provider.value=savedProvider;
   }catch(e){provider.value='local';}
 
-  var endpoint=el('input',{background:P.mantle,color:P.tx,border:'1px solid '+P.s0,borderRadius:'4px',padding:'.34em .45em',fontFamily:'inherit',fontSize:'.76em'},{value:'https://oliverstools.bigguy8014.workers.dev/api/generate'});
-  try{endpoint.value=localStorage.getItem(AIE)||endpoint.value;}catch(e){}
+  var endpoint=el('input',{background:P.mantle,color:P.tx,border:'1px solid '+P.s0,borderRadius:'4px',padding:'.34em .45em',fontFamily:'inherit',fontSize:'.76em'},{value:'https://browserfetch.bigguy8014.workers.dev/api/generate'});
+  try{
+    endpoint.value=localStorage.getItem(AIE)||endpoint.value;
+    if(/oliverstools\.bigguy8014\.workers\.dev/i.test(endpoint.value)){
+      endpoint.value='https://browserfetch.bigguy8014.workers.dev/api/generate';
+      localStorage.setItem(AIE,endpoint.value);
+    }
+  }catch(e){}
 
   var model=el('input',{background:P.mantle,color:P.tx,border:'1px solid '+P.s0,borderRadius:'4px',padding:'.34em .45em',fontFamily:'inherit',fontSize:'.76em'},{value:'llama3.2:3b'});
   try{
@@ -737,7 +743,7 @@ function browserfetch() {
 }
 
 function buildLauncherBookmarklet() {
-  var helperUrl = 'https://tools.oliverstools.bigguy8014.workers.dev/browserfetch.html';
+  var helperUrl = 'https://browserfetch.bigguy8014.workers.dev/browserfetch';
   var code = [
     '(function(){',
     'var rootId="__browserfetch_embed__";',
