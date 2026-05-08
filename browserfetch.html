@@ -264,7 +264,8 @@ function browserfetch() {
     {id:'storage', ic:'\U0001F5C4', lb:'storage'},
     {id:'tools',   ic:'\u2699', lb:'tools'},
     {id:'ai',      ic:'\U0001F916', lb:'ai'},
-    {id:'network', ic:'\u2341', lb:'network'}
+    {id:'network', ic:'\u2341', lb:'network'},
+    {id:'pr0xy',   ic:'\u269b', lb:'pr0xy'}
   ];
   var curTab = 'fetch';
   var tabBar = el('div', {
@@ -714,6 +715,76 @@ function browserfetch() {
   });
   netP.appendChild(ntbl);
   panels.network=netP;
+
+  /* PR0XY */
+  var PRK='__bfproxy__';
+  var prxyP=el('div',{display:'none',flex:'1',flexDirection:'column',padding:'.6em .85em',gap:'.4em',overflow:'auto',userSelect:'text'});
+  prxyP.appendChild(el('div',{color:P.mauve,fontWeight:'bold',fontSize:'.82em',marginBottom:'.3em'},{text:'\u269b Proxy Tools'}));
+  var prxyServices=[
+    {name:'corsproxy.io',url:'https://corsproxy.io/?'},
+    {name:'allorigins.win',url:'https://api.allorigins.win/get?url='},
+    {name:'api.codetabs.com',url:'https://api.codetabs.com/v1/proxy?quest='},
+    {name:'thingproxy.freehostingcloud.com',url:'https://thingproxy.freehostingcloud.com/fetch/'}
+  ];
+  var prxyHdr=el('div',{display:'flex',gap:'.4em',alignItems:'center',flexShrink:'0',paddingBottom:'.4em',borderBottom:'1px solid '+P.s0});
+  prxyHdr.appendChild(el('span',{color:P.ov0,fontSize:'.72em'},{text:'Service:'}));
+  var prxySel=el('select',{background:P.mantle,color:P.tx,border:'1px solid '+P.s0,borderRadius:'4px',padding:'.25em .35em',fontFamily:'inherit',fontSize:'.76em'});
+  prxyServices.forEach(function(s){
+    var op=document.createElement('option');
+    op.value=s.url;
+    op.textContent=s.name;
+    prxySel.appendChild(op);
+  });
+  prxyHdr.appendChild(prxySel);
+  var prxyTestBtn=el('button',{background:'none',border:'1px solid '+P.blue,color:P.blue,borderRadius:'4px',padding:'.2em .5em',cursor:'pointer',fontFamily:'inherit',fontSize:'.72em'},{text:'Test'});
+  prxyTestBtn.onmouseover=function(){this.style.background=P.blue+'22';};
+  prxyTestBtn.onmouseout=function(){this.style.background='none';};
+  prxyTestBtn.onclick=function(){
+    var testUrl=prxySel.value+'https://api.github.com/repos/fazeddar/browserfetch';
+    prxyTestBtn.disabled=true;
+    prxyTestBtn.textContent='Testing...';
+    fetch(testUrl,{mode:'cors'}).then(function(r){return r.text();}).then(function(t){
+      prxyTestBtn.textContent=t.length>100?'✓ Online':'✗ Failed';
+      prxyTestBtn.style.color=t.length>100?P.green:P.red;
+      setTimeout(function(){prxyTestBtn.textContent='Test';prxyTestBtn.style.color=P.blue;prxyTestBtn.disabled=false;},2500);
+    }).catch(function(e){
+      prxyTestBtn.textContent='✗ Failed';
+      prxyTestBtn.style.color=P.red;
+      setTimeout(function(){prxyTestBtn.textContent='Test';prxyTestBtn.style.color=P.blue;prxyTestBtn.disabled=false;},2500);
+    });
+  };
+  prxyHdr.appendChild(prxyTestBtn);
+  prxyP.appendChild(prxyHdr);
+  var prxyUrlLbl=el('div',{color:P.ov0,fontSize:'.72em',marginBottom:'.25em'},{text:'Proxy URL for target:'})
+  prxyP.appendChild(prxyUrlLbl);
+  var prxyInput=el('input',{width:'100%',background:P.mantle,color:P.tx,border:'1px solid '+P.s0,borderRadius:'4px',padding:'.35em .5em',fontFamily:'inherit',fontSize:'.78em',boxSizing:'border-box'},{placeholder:'Enter target URL...'});
+  prxyP.appendChild(prxyInput);
+  var prxyOutput=el('textarea',{width:'100%',flex:'1',minHeight:'100px',background:P.base,color:P.mauve,border:'1px solid '+P.s0,borderRadius:'4px',padding:'.5em',fontFamily:'inherit',fontSize:'.75em',resize:'none',readOnly:true,userSelect:'text'});
+  var prxyBtnRow=el('div',{display:'flex',gap:'.35em'});
+  var prxyBuild=el('button',{background:'none',border:'1px solid '+P.blue,color:P.blue,borderRadius:'4px',padding:'.25em .65em',cursor:'pointer',fontFamily:'inherit',fontSize:'.75em'},{text:'Build'});
+  prxyBuild.onmouseover=function(){this.style.background=P.blue+'22';};
+  prxyBuild.onmouseout=function(){this.style.background='none';};
+  prxyBuild.onclick=function(){
+    var target=(prxyInput.value||'').trim();
+    if(!target){prxyOutput.value='Error: Enter a target URL';prxyOutput.style.color=P.red;return;}
+    var proxyUrl=prxySel.value+encodeURIComponent(target);
+    prxyOutput.value=proxyUrl;
+    prxyOutput.style.color=P.green;
+  };
+  prxyBtnRow.appendChild(prxyBuild);
+  var prxyCopy=el('button',{background:'none',border:'1px solid '+P.green,color:P.green,borderRadius:'4px',padding:'.25em .65em',cursor:'pointer',fontFamily:'inherit',fontSize:'.75em'},{text:'Copy'});
+  prxyCopy.onmouseover=function(){this.style.background=P.green+'22';};
+  prxyCopy.onmouseout=function(){this.style.background='none';};
+  prxyCopy.onclick=function(){
+    if(prxyOutput.value){
+      navigator.clipboard&&navigator.clipboard.writeText(prxyOutput.value);
+      prxyCopy.textContent='Copied!';
+      setTimeout(function(){prxyCopy.textContent='Copy';},1500);
+    }
+  };
+  prxyBtnRow.appendChild(prxyCopy);
+  prxyP.appendChild(prxyBtnRow);
+  panels.pr0xy=prxyP;
 
   /* ASSEMBLE */
   TABS.forEach(function(t){cw.appendChild(panels[t.id]);});
