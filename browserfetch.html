@@ -546,9 +546,9 @@ function browserfetch() {
     var op=document.createElement('option');op.value=o.v;op.textContent=o.t;provider.appendChild(op);
   });
   try{
-    var savedProvider=localStorage.getItem(AIP)||'local';
+    var savedProvider=localStorage.getItem(AIP)||'browser';
     provider.value=savedProvider;
-  }catch(e){provider.value='local';}
+  }catch(e){provider.value='browser';}
 
   var endpoint=el('input',{background:P.mantle,color:P.tx,border:'1px solid '+P.s0,borderRadius:'4px',padding:'.34em .45em',fontFamily:'inherit',fontSize:'.76em'},{value:'https://browserfetch.bigguy8014.workers.dev/api/generate'});
   try{
@@ -571,7 +571,7 @@ function browserfetch() {
   aiTop.appendChild(model);
 
   var aiHint=el('div',{color:P.ov1,fontSize:'.72em',lineHeight:'1.5',flexShrink:'0'});
-  aiHint.textContent='Bookmarklet AI is running through localhost. This build defaults to CPU inference because your Ollama GPU runner is crashing on this machine.';
+  aiHint.textContent='Default mode is Browser AI to avoid endpoint 404 errors. Switch to Local Endpoint only if you have a working /api/generate backend.';
 
   var prompt=el('textarea',{flex:'0 0 120px',minHeight:'110px',resize:'vertical',background:P.mantle,color:P.tx,border:'1px solid '+P.s0,borderRadius:'6px',padding:'.55em .6em',fontFamily:'inherit',fontSize:'.8em',outline:'none',lineHeight:'1.5'},{placeholder:'Ask something...'});
   if(launchContext.sourceSelection){
@@ -650,24 +650,14 @@ function browserfetch() {
     try{
       if(provider.value==='browser'){
         if(!(window.ai&&window.ai.languageModel&&window.ai.languageModel.create)){
-          status.textContent='browser ai unavailable, trying local...';
-          status.style.color=P.peach;
-          out.value=await askLocal(q);
-          status.textContent='done (local fallback)';
-          status.style.color=P.green;
-          return;
+          throw new Error('Browser AI is not available in this browser. Use Chrome Canary with built-in AI enabled, or switch provider to Local Endpoint with a real /api/generate backend.');
         }
         try {
           var session=await window.ai.languageModel.create();
           var resp=await session.prompt(q);
           out.value=String(resp||'');
         } catch (e) {
-          status.textContent='browser ai failed, trying local...';
-          status.style.color=P.peach;
-          out.value=await askLocal(q);
-          status.textContent='done (local fallback)';
-          status.style.color=P.green;
-          return;
+          throw new Error('Browser AI failed: '+(e&&e.message?e.message:String(e)));
         }
       }else{
         out.value=await askLocal(q);
