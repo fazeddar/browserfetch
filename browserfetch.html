@@ -1120,11 +1120,11 @@ function browserfetch() {
     provider.value=savedProvider;
   }catch(e){provider.value='local';}
 
-  var endpoint=el('input',{background:P.mantle,color:P.tx,border:'1px solid '+P.s0,borderRadius:'4px',padding:'.34em .45em',fontFamily:'inherit',fontSize:'.76em'},{value:'/api/generate'});
+  var endpoint=el('input',{background:P.mantle,color:P.tx,border:'1px solid '+P.s0,borderRadius:'4px',padding:'.34em .45em',fontFamily:'inherit',fontSize:'.76em'},{value:'https://browserfetch.bigguy8014.workers.dev/api/generate'});
   try{
     endpoint.value=localStorage.getItem(AIE)||endpoint.value;
     if(/oliverstools\.bigguy8014\.workers\.dev|browserfetch\.bigguy8014\.workers\.dev/i.test(endpoint.value)){
-      endpoint.value='/api/generate';
+      endpoint.value='https://browserfetch.bigguy8014.workers.dev/api/generate';
       localStorage.setItem(AIE,endpoint.value);
     }
   }catch(e){}
