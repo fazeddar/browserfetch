@@ -1,5 +1,6 @@
 name = "browserfetch"
 compatibility_date = "2026-05-08"
+main = "cloudflare/worker.js"
 
 [assets]
-directory = "."
+directory = "public"
