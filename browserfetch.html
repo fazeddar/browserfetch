@@ -99,6 +99,7 @@
       <span class="chip">&#x270E; notes &#8212; persistent notepad</span>
       <span class="chip">&#x1F5C4; storage &#8212; localStorage / cookies</span>
       <span class="chip">&#x2699; tools &#8212; JSON / Base64 / URL encode</span>
+      <span class="chip">&lt;/&gt; code &#8212; html/css/js live preview</span>
       <span class="chip">&#x1F916; ai &#8212; browser AI or local endpoint</span>
       <span class="chip">&#x2341; network &#8212; connection &amp; page info</span>
     </div>
@@ -263,6 +264,7 @@ function browserfetch() {
     {id:'notes',   ic:'\u270e', lb:'notes'},
     {id:'storage', ic:'\U0001F5C4', lb:'storage'},
     {id:'tools',   ic:'\u2699', lb:'tools'},
+    {id:'code',    ic:'</>', lb:'code'},
     {id:'ai',      ic:'\U0001F916', lb:'ai'},
     {id:'network', ic:'\u2341', lb:'network'},
     {id:'pr0xy',   ic:'\u269b', lb:'pr0xy'}
@@ -538,6 +540,573 @@ function browserfetch() {
   }));
   panels.tools=toolsP;
 
+  /* CODE */
+  var CODE_KEYS={
+    mode:'__bf_code_mode__',
+    split:'__bf_code_split_pct__',
+    webHtml:'__bf_code_web_html__',
+    webCss:'__bf_code_web_css__',
+    webJs:'__bf_code_web_js__',
+    js:'__bf_code_js_single__',
+    py:'__bf_code_py__',
+    pygui:'__bf_code_pygui__',
+    md:'__bf_code_md__',
+    remote:'__bf_code_remote__',
+    remoteLang:'__bf_code_remote_lang__'
+  };
+
+  var codeP=el('div',{display:'none',flex:'1',flexDirection:'column',minHeight:'0',overflow:'hidden',padding:'0',userSelect:'text',background:'#0f1320'});
+  var codeHeader=el('div',{display:'flex',alignItems:'center',gap:'.5em',padding:'.5em .65em',background:'#0b0f1a',borderBottom:'1px solid #1f2a3d',flexShrink:'0'});
+  codeHeader.appendChild(el('span',{color:'#8eb4ff',fontWeight:'bold',fontSize:'.78em',letterSpacing:'.03em'},{text:'Untitled Snippet'}));
+
+  var modeSel=el('select',{background:'#121b2c',color:'#d7e5ff',border:'1px solid #263758',borderRadius:'6px',padding:'.25em .45em',fontFamily:'inherit',fontSize:'.74em'});
+  [
+    {v:'web',t:'Web (HTML/CSS/JS)'},
+    {v:'javascript',t:'JavaScript'},
+    {v:'python',t:'Python (Pyodide)'},
+    {v:'pygui',t:'PyGUI (Python UI)'},
+    {v:'markdown',t:'Markdown'},
+    {v:'remote',t:'Remote Runner'}
+  ].forEach(function(o){
+    var op=document.createElement('option');
+    op.value=o.v;
+    op.textContent=o.t;
+    modeSel.appendChild(op);
+  });
+
+  var remoteLangSel=el('select',{display:'none',background:'#121b2c',color:'#d7e5ff',border:'1px solid #263758',borderRadius:'6px',padding:'.25em .45em',fontFamily:'inherit',fontSize:'.74em'});
+  [
+    {v:'python',t:'Python 3'},
+    {v:'javascript',t:'JavaScript (Node)'},
+    {v:'typescript',t:'TypeScript'},
+    {v:'go',t:'Go'},
+    {v:'rust',t:'Rust'},
+    {v:'c++',t:'C++'},
+    {v:'java',t:'Java'}
+  ].forEach(function(o){
+    var op=document.createElement('option');
+    op.value=o.v;
+    op.textContent=o.t;
+    remoteLangSel.appendChild(op);
+  });
+
+  function topBtn(txt,bg,color){
+    var b=el('button',{background:bg,border:'1px solid '+bg,color:color,borderRadius:'6px',padding:'.25em .65em',cursor:'pointer',fontFamily:'inherit',fontSize:'.74em',fontWeight:'bold'},{text:txt});
+    b.onmouseover=function(){this.style.filter='brightness(1.08)';};
+    b.onmouseout=function(){this.style.filter='';};
+    return b;
+  }
+
+  var runCodeBtn=topBtn('Run','#3a7afe','#eef4ff');
+  var clearCodeBtn=topBtn('Clear','#1d2b44','#c8d8ff');
+  var resetCodeBtn=topBtn('Reset','#1d2b44','#c8d8ff');
+  var formatCodeBtn=topBtn('Format','#1d2b44','#c8d8ff');
+  var codeInfo=el('span',{color:'#8fa6ce',fontSize:'.72em'},{text:''});
+  var codeStatus=el('span',{marginLeft:'auto',color:'#7f90b3',fontSize:'.72em'},{text:'ready'});
+
+  codeHeader.appendChild(modeSel);
+  codeHeader.appendChild(remoteLangSel);
+  codeHeader.appendChild(runCodeBtn);
+  codeHeader.appendChild(clearCodeBtn);
+  codeHeader.appendChild(resetCodeBtn);
+  codeHeader.appendChild(formatCodeBtn);
+  codeHeader.appendChild(codeInfo);
+  codeHeader.appendChild(codeStatus);
+
+  var codeBody=el('div',{display:'flex',flex:'1',minHeight:'0'});
+  var editorPane=el('div',{display:'flex',flexDirection:'column',width:'52%',minWidth:'220px',minHeight:'0'});
+  var splitBar=el('div',{width:'8px',cursor:'col-resize',background:'#10182b',borderLeft:'1px solid #1f2a3d',borderRight:'1px solid #1f2a3d',flexShrink:'0'});
+  var outputPane=el('div',{display:'flex',flexDirection:'column',flex:'1',minHeight:'0'});
+
+  var editorTabBar=el('div',{display:'flex',background:'#0e1728',borderBottom:'1px solid #1f2a3d',flexShrink:'0'});
+  var editorTabs=[{id:'html',label:'HTML'},{id:'css',label:'CSS'},{id:'js',label:'JavaScript'}];
+  var editorTabBtns={};
+  var activeEditorTab='js';
+  editorTabs.forEach(function(t){
+    var b=el('button',{background:'none',border:'none',borderBottom:'2px solid transparent',color:'#8fa6ce',padding:'.42em .72em',cursor:'pointer',fontFamily:'inherit',fontSize:'.73em'},{text:t.label});
+    b.onclick=function(){setEditorTab(t.id);};
+    b.onmouseover=function(){if(activeEditorTab!==t.id)b.style.color='#dce8ff';};
+    b.onmouseout=function(){if(activeEditorTab!==t.id)b.style.color='#8fa6ce';};
+    editorTabBtns[t.id]=b;
+    editorTabBar.appendChild(b);
+  });
+
+  var webHtmlTa=el('textarea',{display:'none',flex:'1',resize:'vertical',outline:'none',border:'0',background:'#0f1728',color:'#dbe7ff',padding:'.8em',fontFamily:'inherit',fontSize:'.79em',lineHeight:'1.6',minHeight:'140px'});
+  var webCssTa=el('textarea',{display:'none',flex:'1',resize:'vertical',outline:'none',border:'0',background:'#0f1728',color:'#dbe7ff',padding:'.8em',fontFamily:'inherit',fontSize:'.79em',lineHeight:'1.6',minHeight:'140px'});
+  var webJsTa=el('textarea',{display:'flex',flex:'1',resize:'vertical',outline:'none',border:'0',background:'#0f1728',color:'#dbe7ff',padding:'.8em',fontFamily:'inherit',fontSize:'.79em',lineHeight:'1.6',minHeight:'140px'});
+
+  var singleTa=el('textarea',{display:'none',flex:'1',resize:'vertical',outline:'none',border:'0',background:'#0f1728',color:'#dbe7ff',padding:'.8em',fontFamily:'inherit',fontSize:'.79em',lineHeight:'1.6',minHeight:'140px'});
+
+  var outHead=el('div',{display:'flex',alignItems:'center',padding:'.42em .72em',background:'#0e1728',borderBottom:'1px solid #1f2a3d',color:'#8fa6ce',fontSize:'.73em',flexShrink:'0'},{text:'Output'});
+  var outFrameWrap=el('div',{display:'flex',flex:'1',minHeight:'180px',width:'100%',height:'100%',resize:'both',overflow:'auto',background:'#ffffff'});
+  var outFrame=el('iframe',{style:'display:flex;flex:1;border:0;background:#ffffff;min-width:260px;min-height:180px;'});
+  outFrame.setAttribute('sandbox','allow-scripts allow-modals');
+  var outConsole=el('pre',{display:'none',flex:'1',margin:'0',padding:'.75em',overflow:'auto',background:'#0f1728',color:'#dbe7ff',fontSize:'.78em',lineHeight:'1.6',whiteSpace:'pre-wrap',wordBreak:'break-word'});
+  outFrameWrap.appendChild(outFrame);
+
+  editorPane.appendChild(editorTabBar);
+  editorPane.appendChild(webHtmlTa);
+  editorPane.appendChild(webCssTa);
+  editorPane.appendChild(webJsTa);
+  editorPane.appendChild(singleTa);
+  outputPane.appendChild(outHead);
+  outputPane.appendChild(outFrameWrap);
+  outputPane.appendChild(outConsole);
+  codeBody.appendChild(editorPane);
+  codeBody.appendChild(splitBar);
+  codeBody.appendChild(outputPane);
+
+  var splitDrag=null;
+  function applySplitPct(pct){
+    var p=Math.max(25,Math.min(75,Number(pct)||52));
+    editorPane.style.width=p+'%';
+    outputPane.style.width=(100-p)+'%';
+    outputPane.style.flex='0 0 '+(100-p)+'%';
+    try{localStorage.setItem(CODE_KEYS.split,String(p));}catch(_e){}
+  }
+
+  function formatHtml(src){
+    var lines=src.split('\n');
+    var result=[];
+    for(var i=0;i<lines.length;i++){
+      var l=lines[i].trim();
+      if(l.length>0) result.push(l);
+    }
+    return result.join('\n');
+  }
+
+  function formatCss(src){
+    var s=src.replace(/\{\s*/g,'{\n  ').replace(/\}\s*/g,'\n}\n').replace(/;\s*/g,';\n  ');
+    return s.split('\n').map(function(l){return l.replace(/^\s+/,'').replace(/\s+$/,'');}).filter(function(l){return l.length>0;}).join('\n');
+  }
+
+  function formatJs(src){
+    var s=src.replace(/\{\s*/g,'{\n').replace(/\}\s*/g,'\n}\n').replace(/;\s*/g,';\n');
+    var lines=s.split('\n');
+    var indent=0, result=[];
+    for(var i=0;i<lines.length;i++){
+      var l=lines[i].replace(/^\s+/,'').replace(/\s+$/,'');
+      if(l.length===0)continue;
+      if(/^\}/.test(l)) indent=Math.max(0,indent-1);
+      result.push(new Array(indent+1).join('  ')+l);
+      if(/\{$/.test(l)) indent++;
+    }
+    return result.join('\n');
+  }
+
+  function formatCurrentCode(){
+    if(modeSel.value!=='web')return;
+    var tab=activeEditorTab;
+    var ta=(tab==='html'?webHtmlTa:(tab==='css'?webCssTa:webJsTa));
+    var src=ta.value||'';
+    var fmt='';
+    try{
+      if(tab==='html') fmt=formatHtml(src);
+      else if(tab==='css') fmt=formatCss(src);
+      else if(tab==='js') fmt=formatJs(src);
+      ta.value=fmt;
+      saveCodeState();
+      setStatus('formatted','#9de7b1');
+    }catch(e){
+      setStatus('format failed','#ff9aa7');
+    }
+  }
+
+  splitBar.addEventListener('mousedown',function(e){
+    var r=codeBody.getBoundingClientRect();
+    splitDrag={left:r.left,width:r.width};
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove',function(e){
+    if(!splitDrag)return;
+    var rel=e.clientX-splitDrag.left;
+    var pct=(rel/splitDrag.width)*100;
+    applySplitPct(pct);
+  });
+
+  document.addEventListener('mouseup',function(){splitDrag=null;});
+
+  splitBar.addEventListener('mouseenter',function(){splitBar.style.background='#182645';});
+  splitBar.addEventListener('mouseleave',function(){if(!splitDrag)splitBar.style.background='#10182b';});
+
+  function setEditorTab(id){
+    activeEditorTab=id;
+    editorTabs.forEach(function(t){
+      var on=t.id===id;
+      editorTabBtns[t.id].style.color=on?'#dce8ff':'#8fa6ce';
+      editorTabBtns[t.id].style.borderBottom=on?'2px solid #4c89ff':'2px solid transparent';
+      if(t.id==='html')webHtmlTa.style.display=on?'flex':'none';
+      if(t.id==='css')webCssTa.style.display=on?'flex':'none';
+      if(t.id==='js')webJsTa.style.display=on?'flex':'none';
+    });
+  }
+
+  function defWeb(){
+    return {
+      html:'<h1 id="hello">Hello, world!</h1>',
+      css:'body { margin: 0; padding: 24px; font-family: Segoe UI, sans-serif; background: #f6f8ff; color: #1d2a44; }\n#hello { font-size: 2rem; }',
+      js:'console.log("Hello, world!");'
+    };
+  }
+
+  function defSingle(mode){
+    if(mode==='python') return 'print("Hello, world!")';
+    if(mode==='pygui') return 'title("Hello, world!")\ntext("Welcome to PyGUI mode.")';
+    if(mode==='markdown') return '# Hello, world!\n\nThis is a basic markdown starter.';
+    if(mode==='remote') return 'print("Hello, world!")';
+    return 'console.log("Hello, world!");';
+  }
+
+  function saveCodeState(){
+    try{
+      localStorage.setItem(CODE_KEYS.mode,modeSel.value);
+      localStorage.setItem(CODE_KEYS.remoteLang,remoteLangSel.value);
+      localStorage.setItem(CODE_KEYS.webHtml,webHtmlTa.value);
+      localStorage.setItem(CODE_KEYS.webCss,webCssTa.value);
+      localStorage.setItem(CODE_KEYS.webJs,webJsTa.value);
+      localStorage.setItem(CODE_KEYS.js,modeSel.value==='javascript'?singleTa.value:(localStorage.getItem(CODE_KEYS.js)||''));
+      localStorage.setItem(CODE_KEYS.py,modeSel.value==='python'?singleTa.value:(localStorage.getItem(CODE_KEYS.py)||''));
+      localStorage.setItem(CODE_KEYS.pygui,modeSel.value==='pygui'?singleTa.value:(localStorage.getItem(CODE_KEYS.pygui)||''));
+      localStorage.setItem(CODE_KEYS.md,modeSel.value==='markdown'?singleTa.value:(localStorage.getItem(CODE_KEYS.md)||''));
+      localStorage.setItem(CODE_KEYS.remote,modeSel.value==='remote'?singleTa.value:(localStorage.getItem(CODE_KEYS.remote)||''));
+    }catch(_e){}
+  }
+
+  function loadCodeState(){
+    var d=defWeb();
+    try{
+      webHtmlTa.value=localStorage.getItem(CODE_KEYS.webHtml)||d.html;
+      webCssTa.value=localStorage.getItem(CODE_KEYS.webCss)||d.css;
+      webJsTa.value=localStorage.getItem(CODE_KEYS.webJs)||d.js;
+      modeSel.value=localStorage.getItem(CODE_KEYS.mode)||'web';
+      remoteLangSel.value=localStorage.getItem(CODE_KEYS.remoteLang)||'python';
+    }catch(_e){
+      webHtmlTa.value=d.html;
+      webCssTa.value=d.css;
+      webJsTa.value=d.js;
+      modeSel.value='web';
+      remoteLangSel.value='python';
+    }
+  }
+
+  function setStatus(msg,col){
+    codeStatus.textContent=msg;
+    codeStatus.style.color=col||'#7f90b3';
+  }
+
+  function showConsole(txt){
+    outFrameWrap.style.display='none';
+    outConsole.style.display='block';
+    outConsole.textContent=txt||'';
+  }
+
+  function showFrame(html){
+    outConsole.style.display='none';
+    outFrameWrap.style.display='flex';
+    outFrame.srcdoc=html||'';
+  }
+
+  function escapeHtml(str){
+    return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function markdownToHtml(md){
+    var s=escapeHtml(md||'');
+    s=s.replace(/^###\s+(.+)$/gm,'<h3>$1</h3>');
+    s=s.replace(/^##\s+(.+)$/gm,'<h2>$1</h2>');
+    s=s.replace(/^#\s+(.+)$/gm,'<h1>$1</h1>');
+    s=s.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
+    s=s.replace(/\*(.+?)\*/g,'<em>$1</em>');
+    s=s.replace(/`(.+?)`/g,'<code>$1</code>');
+    s=s.replace(/\n\-\s+(.+)/g,'\n<li>$1</li>');
+    s=s.replace(/(<li>.*<\/li>)/gs,function(m){return '<ul>'+m.replace(/\n/g,'')+'</ul>';});
+    s=s.replace(/\n\n/g,'</p><p>');
+    s='<p>'+s+'</p>';
+    s=s.replace(/<p><\/p>/g,'');
+    return '<!doctype html><html><head><meta charset="utf-8"><style>body{font-family:Segoe UI,sans-serif;padding:22px;line-height:1.6;background:#f5f7ff;color:#1a2235;}code{background:#e8ecff;padding:2px 6px;border-radius:6px;}h1,h2,h3{color:#233f8c;}ul{padding-left:20px;}</style></head><body>'+s+'</body></html>';
+  }
+
+  var pyodidePromise=null;
+  function loadPyodideRuntime(){
+    if(pyodidePromise) return pyodidePromise;
+    pyodidePromise=new Promise(function(resolve,reject){
+      if(window.loadPyodide){
+        window.loadPyodide({indexURL:'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/'}).then(resolve).catch(reject);
+        return;
+      }
+      var s=document.createElement('script');
+      s.src='https://cdn.jsdelivr.net/pyodide/v0.26.4/full/pyodide.js';
+      s.onload=function(){
+        window.loadPyodide({indexURL:'https://cdn.jsdelivr.net/pyodide/v0.26.4/full/'}).then(resolve).catch(reject);
+      };
+      s.onerror=function(){reject(new Error('Could not load Pyodide runtime.'));};
+      document.head.appendChild(s);
+    });
+    return pyodidePromise;
+  }
+
+  function getRemoteRuntime(lang){
+    var map={
+      python:{language:'python',version:'3.10.0'},
+      javascript:{language:'javascript',version:'18.15.0'},
+      typescript:{language:'typescript',version:'5.0.3'},
+      go:{language:'go',version:'1.16.2'},
+      rust:{language:'rust',version:'1.68.2'},
+      'c++':{language:'c++',version:'10.2.0'},
+      java:{language:'java',version:'15.0.2'}
+    };
+    return map[lang]||map.python;
+  }
+
+  function runWebMode(){
+    var doc='<!doctype html><html><head><meta charset="utf-8"><style>'+ (webCssTa.value||'') +'</style></head><body>'+ (webHtmlTa.value||'') +'<script>'+ (webJsTa.value||'') +'<\/script></body></html>';
+    showFrame(doc);
+    setStatus('web preview updated','#9de7b1');
+  }
+
+  function runJavascriptMode(){
+    var logs=[];
+    var fakeConsole={
+      log:function(){logs.push([].slice.call(arguments).join(' '));},
+      warn:function(){logs.push('[warn] '+[].slice.call(arguments).join(' '));},
+      error:function(){logs.push('[error] '+[].slice.call(arguments).join(' '));}
+    };
+    try{
+      var fn=new Function('console', singleTa.value || '');
+      var ret=fn(fakeConsole);
+      if(ret!==undefined) logs.push(String(ret));
+      showConsole(logs.join('\n') || '(no output)');
+      setStatus('javascript complete','#9de7b1');
+    }catch(e){
+      showConsole('Error: '+(e&&e.message?e.message:String(e)));
+      setStatus('javascript failed','#ff9aa7');
+    }
+  }
+
+  async function runPythonMode(){
+    try{
+      var pySrc=singleTa.value||'';
+      if(/(^|\n)\s*(from\s+tkinter\s+import|import\s+tkinter)\b/i.test(pySrc)){
+        showConsole('Tkinter is not available in this in-browser Python runtime.\n\nWhy: Tkinter needs the native Tk GUI toolkit and a desktop window manager, which a browser sandbox does not provide.\n\nUse one of these instead:\n- Python output in console (current mode)\n- HTML/CSS/JS UI in Web mode\n- Remote runner for CLI-style Python');
+        setStatus('tkinter not supported here','#fab387');
+        return;
+      }
+      setStatus('loading python runtime...','#f9e2af');
+      var py=await loadPyodideRuntime();
+      var lines=[];
+      py.setStdout({batched:function(s){lines.push(s);}});
+      py.setStderr({batched:function(s){lines.push('[stderr] '+s);}});
+      var result=await py.runPythonAsync(singleTa.value||'');
+      if(result!==undefined && String(result).length) lines.push(String(result));
+      showConsole(lines.join('\n') || '(no output)');
+      setStatus('python complete','#9de7b1');
+    }catch(e){
+      showConsole('Python error: '+(e&&e.message?e.message:String(e)));
+      setStatus('python failed','#ff9aa7');
+    }
+  }
+
+  function runMarkdownMode(){
+    showFrame(markdownToHtml(singleTa.value||''));
+    setStatus('markdown rendered','#9de7b1');
+  }
+
+  function buildPyGuiDoc(widgets){
+    var chunks=[];
+    chunks.push('<!doctype html><html><head><meta charset="utf-8"><style>');
+    chunks.push('body{margin:0;padding:20px;background:#f4f7ff;font-family:Segoe UI,system-ui,sans-serif;color:#1d2a44;}');
+    chunks.push('.pg-card{max-width:720px;margin:0 auto;background:#fff;border-radius:16px;padding:18px 18px 14px;box-shadow:0 14px 30px rgba(34,64,130,.16);}');
+    chunks.push('.pg-title{font-size:1.25rem;color:#2955bb;margin:0 0 10px;}');
+    chunks.push('.pg-text{margin:0 0 10px;line-height:1.55;}');
+    chunks.push('.pg-field{display:flex;flex-direction:column;gap:6px;margin:0 0 12px;}');
+    chunks.push('.pg-field label{font-size:.86rem;color:#44609d;font-weight:600;}');
+    chunks.push('.pg-input,.pg-textarea{border:1px solid #cfdaf2;border-radius:10px;padding:10px 11px;font:inherit;background:#fbfdff;}');
+    chunks.push('.pg-textarea{min-height:88px;resize:vertical;}');
+    chunks.push('.pg-slider{width:100%;}');
+    chunks.push('.pg-btn{border:0;background:#3a7afe;color:#fff;padding:9px 13px;border-radius:10px;cursor:pointer;font-weight:700;}');
+    chunks.push('.pg-btn:hover{filter:brightness(1.06);}');
+    chunks.push('.pg-divider{border:0;border-top:1px solid #d6e0f5;margin:12px 0;}');
+    chunks.push('.pg-log{margin-top:12px;background:#121b2c;color:#dbe7ff;border-radius:10px;padding:10px;white-space:pre-wrap;font-size:.82rem;min-height:48px;}');
+    chunks.push('</style></head><body><div class="pg-card">');
+
+    (widgets||[]).forEach(function(w){
+      var t=(w&&w.type?String(w.type):'').toLowerCase();
+      var id=escapeHtml(w&&w.id?w.id:'');
+      var label=escapeHtml(w&&w.label?w.label:(w&&w.text?w.text:''));
+      var ph=escapeHtml(w&&w.placeholder?w.placeholder:'');
+      if(t==='title') chunks.push('<h2 class="pg-title">'+label+'</h2>');
+      else if(t==='text') chunks.push('<p class="pg-text">'+label+'</p>');
+      else if(t==='input') chunks.push('<div class="pg-field"><label>'+label+'</label><input class="pg-input" data-pg-id="'+id+'" placeholder="'+ph+'"></div>');
+      else if(t==='textarea') chunks.push('<div class="pg-field"><label>'+label+'</label><textarea class="pg-textarea" data-pg-id="'+id+'" placeholder="'+ph+'"></textarea></div>');
+      else if(t==='slider') chunks.push('<div class="pg-field"><label>'+label+'</label><input class="pg-slider" type="range" min="'+Number(w.min||0)+'" max="'+Number(w.max||100)+'" value="'+Number(w.value||0)+'" data-pg-id="'+id+'"></div>');
+      else if(t==='button') chunks.push('<button class="pg-btn" data-pg-btn="'+id+'">'+label+'</button>');
+      else if(t==='divider') chunks.push('<hr class="pg-divider">');
+      else if(t==='spacer') chunks.push('<div style="height:'+Math.max(0,Number(w.height||12))+'px"></div>');
+    });
+
+    chunks.push('<div class="pg-log" id="pgLog">PyGUI ready. Click a button to inspect current values.</div>');
+    chunks.push('<script>(function(){function snap(){var o={};document.querySelectorAll("[data-pg-id]").forEach(function(n){o[n.getAttribute("data-pg-id")]=n.value;});return o;}document.querySelectorAll("[data-pg-btn]").forEach(function(b){b.addEventListener("click",function(){var id=b.getAttribute("data-pg-btn")||"button";var out={event:id,values:snap()};document.getElementById("pgLog").textContent=JSON.stringify(out,null,2);});});})();<\/script>');
+    chunks.push('</div></body></html>');
+    return chunks.join('');
+  }
+
+  async function runPyGuiMode(){
+    try{
+      setStatus('building pygui...','#f9e2af');
+      var py=await loadPyodideRuntime();
+      var src=(singleTa.value||'').trim();
+      if(/(^|\n)\s*(from\s+tkinter\s+import|import\s+tkinter)\b/i.test(src)){
+        showConsole('Tkinter desktop windows cannot run in browser mode.\n\nPyGUI mode provides Tkinter-like widgets rendered in the preview pane instead.\n\nUse helpers like title(), text(), input_box(), textarea(), button(), slider(), divider(), spacer().');
+        setStatus('tkinter mapped to pygui','#fab387');
+      }
+      var prelude=[
+        'import json',
+        '__widgets = []',
+        'def title(text): __widgets.append({"type":"title","text":str(text)})',
+        'def text(value): __widgets.append({"type":"text","text":str(value)})',
+        'def input_box(id, label=None, placeholder=""): __widgets.append({"type":"input","id":str(id),"label":str(label if label is not None else id),"placeholder":str(placeholder)})',
+        'def textarea(id, label=None, placeholder=""): __widgets.append({"type":"textarea","id":str(id),"label":str(label if label is not None else id),"placeholder":str(placeholder)})',
+        'def button(id, label=None): __widgets.append({"type":"button","id":str(id),"label":str(label if label is not None else id)})',
+        'def slider(id, minimum=0, maximum=100, value=50, label=None): __widgets.append({"type":"slider","id":str(id),"label":str(label if label is not None else id),"min":float(minimum),"max":float(maximum),"value":float(value)})',
+        'def divider(): __widgets.append({"type":"divider"})',
+        'def spacer(height=12): __widgets.append({"type":"spacer","height":float(height)})'
+      ].join('\n');
+      var wrapped=prelude+'\n'+src+'\njson.dumps(__widgets)';
+      var raw=await py.runPythonAsync(wrapped);
+      var widgets=[];
+      try{widgets=JSON.parse(String(raw||'[]'));}catch(_e){widgets=[];}
+      showFrame(buildPyGuiDoc(widgets));
+      setStatus('pygui rendered','#9de7b1');
+    }catch(e){
+      showConsole('PyGUI error: '+(e&&e.message?e.message:String(e)));
+      setStatus('pygui failed','#ff9aa7');
+    }
+  }
+
+  async function runRemoteMode(){
+    try{
+      setStatus('sending to remote runner...','#f9e2af');
+      var rt=getRemoteRuntime(remoteLangSel.value);
+      var r=await fetch('https://emkc.org/api/v2/piston/execute',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({
+          language:rt.language,
+          version:rt.version,
+          files:[{content:singleTa.value||''}]
+        })
+      });
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      var data=await r.json();
+      var chunks=[];
+      if(data&&data.compile&&data.compile.output) chunks.push('[compile]\n'+data.compile.output);
+      if(data&&data.run&&data.run.output) chunks.push('[run]\n'+data.run.output);
+      if(data&&data.run&&typeof data.run.code!=='undefined') chunks.push('\nexit code: '+data.run.code);
+      showConsole(chunks.join('\n') || '(no output)');
+      setStatus('remote run complete','#9de7b1');
+    }catch(e){
+      showConsole('Remote runner error: '+(e&&e.message?e.message:String(e))+'\nThis mode needs internet and may be rate-limited.');
+      setStatus('remote run failed','#ff9aa7');
+    }
+  }
+
+  function applyMode(){
+    var mode=modeSel.value;
+    var isWeb=mode==='web';
+    var isRemote=mode==='remote';
+    editorTabBar.style.display=isWeb?'flex':'none';
+    webHtmlTa.style.display=isWeb&&activeEditorTab==='html'?'flex':'none';
+    webCssTa.style.display=isWeb&&activeEditorTab==='css'?'flex':'none';
+    webJsTa.style.display=isWeb&&activeEditorTab==='js'?'flex':'none';
+    singleTa.style.display=isWeb?'none':'flex';
+    remoteLangSel.style.display=isRemote?'inline-block':'none';
+
+    if(!isWeb){
+      try{
+        if(mode==='javascript') singleTa.value=localStorage.getItem(CODE_KEYS.js)||defSingle('javascript');
+        if(mode==='python') singleTa.value=localStorage.getItem(CODE_KEYS.py)||defSingle('python');
+        if(mode==='pygui') singleTa.value=localStorage.getItem(CODE_KEYS.pygui)||defSingle('pygui');
+        if(mode==='markdown') singleTa.value=localStorage.getItem(CODE_KEYS.md)||defSingle('markdown');
+        if(mode==='remote') singleTa.value=localStorage.getItem(CODE_KEYS.remote)||defSingle('remote');
+      }catch(_e){
+        singleTa.value=defSingle(mode);
+      }
+      outHead.textContent=isRemote?'Output (remote)':(mode==='python'?'Output (python)':(mode==='pygui'?'Preview (pygui)':(mode==='markdown'?'Preview':'Console')));
+    }else{
+      outHead.textContent='Output';
+    }
+
+    outFrameWrap.style.resize=(mode==='web')?'both':'none';
+    outFrameWrap.style.overflow=(mode==='web')?'auto':'hidden';
+
+    codeInfo.textContent='';
+    if(mode==='python') codeInfo.textContent='Tkinter GUI windows are not supported in-browser.';
+    if(mode==='pygui') codeInfo.textContent='PyGUI renders Python-declared widgets in preview. Great tkinter-style fallback.';
+    if(mode==='remote') codeInfo.textContent='Remote mode requires internet and may be rate-limited.';
+
+    saveCodeState();
+  }
+
+  function onAnyInput(){
+    saveCodeState();
+    setStatus('edited','#f9e2af');
+  }
+
+  async function runCurrentMode(){
+    saveCodeState();
+    if(modeSel.value==='web') return runWebMode();
+    if(modeSel.value==='javascript') return runJavascriptMode();
+    if(modeSel.value==='python') return runPythonMode();
+    if(modeSel.value==='pygui') return runPyGuiMode();
+    if(modeSel.value==='markdown') return runMarkdownMode();
+    if(modeSel.value==='remote') return runRemoteMode();
+  }
+
+  runCodeBtn.onclick=function(){ runCurrentMode(); };
+  formatCodeBtn.onclick=function(){ formatCurrentCode(); };
+  clearCodeBtn.onclick=function(){
+    if(modeSel.value==='web'){
+      webHtmlTa.value='';
+      webCssTa.value='';
+      webJsTa.value='';
+      showFrame('');
+    }else{
+      singleTa.value='';
+      showConsole('');
+    }
+    saveCodeState();
+    setStatus('cleared','#fab387');
+  };
+  resetCodeBtn.onclick=function(){
+    var d=defWeb();
+    if(modeSel.value==='web'){
+      webHtmlTa.value=d.html;
+      webCssTa.value=d.css;
+      webJsTa.value=d.js;
+    }else{
+      singleTa.value=defSingle(modeSel.value);
+    }
+    saveCodeState();
+    runCurrentMode();
+  };
+
+  modeSel.onchange=function(){ applyMode(); runCurrentMode(); };
+  remoteLangSel.onchange=function(){ saveCodeState(); if(modeSel.value==='remote') runCurrentMode(); };
+  webHtmlTa.addEventListener('input',onAnyInput);
+  webCssTa.addEventListener('input',onAnyInput);
+  webJsTa.addEventListener('input',onAnyInput);
+  singleTa.addEventListener('input',onAnyInput);
+
+  setEditorTab('js');
+  loadCodeState();
+  try{applySplitPct(localStorage.getItem(CODE_KEYS.split)||52);}catch(_e){applySplitPct(52);}
+  applyMode();
+  runCurrentMode();
+  codeP.appendChild(codeHeader);
+  codeP.appendChild(codeBody);
+  panels.code=codeP;
+
   /* AI */
   var AIP='__bf_ai_provider__',AIE='__bf_ai_endpoint__',AIM='__bf_ai_model__';
   var aiP=el('div',{display:'none',flex:'1',flexDirection:'column',padding:'.6em .85em',gap:'.5em',overflow:'hidden',userSelect:'text'});
@@ -717,73 +1286,42 @@ function browserfetch() {
   panels.network=netP;
 
   /* PR0XY */
-  var PRK='__bfproxy__';
-  var prxyP=el('div',{display:'none',flex:'1',flexDirection:'column',padding:'.6em .85em',gap:'.4em',overflow:'auto',userSelect:'text'});
-  prxyP.appendChild(el('div',{color:P.mauve,fontWeight:'bold',fontSize:'.82em',marginBottom:'.3em'},{text:'\u269b Proxy Tools'}));
-  var prxyServices=[
-    {name:'corsproxy.io',url:'https://corsproxy.io/?'},
-    {name:'allorigins.win',url:'https://api.allorigins.win/get?url='},
-    {name:'api.codetabs.com',url:'https://api.codetabs.com/v1/proxy?quest='},
-    {name:'thingproxy.freehostingcloud.com',url:'https://thingproxy.freehostingcloud.com/fetch/'}
-  ];
-  var prxyHdr=el('div',{display:'flex',gap:'.4em',alignItems:'center',flexShrink:'0',paddingBottom:'.4em',borderBottom:'1px solid '+P.s0});
-  prxyHdr.appendChild(el('span',{color:P.ov0,fontSize:'.72em'},{text:'Service:'}));
-  var prxySel=el('select',{background:P.mantle,color:P.tx,border:'1px solid '+P.s0,borderRadius:'4px',padding:'.25em .35em',fontFamily:'inherit',fontSize:'.76em'});
-  prxyServices.forEach(function(s){
-    var op=document.createElement('option');
-    op.value=s.url;
-    op.textContent=s.name;
-    prxySel.appendChild(op);
-  });
-  prxyHdr.appendChild(prxySel);
-  var prxyTestBtn=el('button',{background:'none',border:'1px solid '+P.blue,color:P.blue,borderRadius:'4px',padding:'.2em .5em',cursor:'pointer',fontFamily:'inherit',fontSize:'.72em'},{text:'Test'});
-  prxyTestBtn.onmouseover=function(){this.style.background=P.blue+'22';};
-  prxyTestBtn.onmouseout=function(){this.style.background='none';};
-  prxyTestBtn.onclick=function(){
-    var testUrl=prxySel.value+'https://api.github.com/repos/fazeddar/browserfetch';
-    prxyTestBtn.disabled=true;
-    prxyTestBtn.textContent='Testing...';
-    fetch(testUrl,{mode:'cors'}).then(function(r){return r.text();}).then(function(t){
-      prxyTestBtn.textContent=t.length>100?'✓ Online':'✗ Failed';
-      prxyTestBtn.style.color=t.length>100?P.green:P.red;
-      setTimeout(function(){prxyTestBtn.textContent='Test';prxyTestBtn.style.color=P.blue;prxyTestBtn.disabled=false;},2500);
-    }).catch(function(e){
-      prxyTestBtn.textContent='✗ Failed';
-      prxyTestBtn.style.color=P.red;
-      setTimeout(function(){prxyTestBtn.textContent='Test';prxyTestBtn.style.color=P.blue;prxyTestBtn.disabled=false;},2500);
-    });
-  };
-  prxyHdr.appendChild(prxyTestBtn);
-  prxyP.appendChild(prxyHdr);
-  var prxyUrlLbl=el('div',{color:P.ov0,fontSize:'.72em',marginBottom:'.25em'},{text:'Proxy URL for target:'})
-  prxyP.appendChild(prxyUrlLbl);
-  var prxyInput=el('input',{width:'100%',background:P.mantle,color:P.tx,border:'1px solid '+P.s0,borderRadius:'4px',padding:'.35em .5em',fontFamily:'inherit',fontSize:'.78em',boxSizing:'border-box'},{placeholder:'Enter target URL...'});
-  prxyP.appendChild(prxyInput);
-  var prxyOutput=el('textarea',{width:'100%',flex:'1',minHeight:'100px',background:P.base,color:P.mauve,border:'1px solid '+P.s0,borderRadius:'4px',padding:'.5em',fontFamily:'inherit',fontSize:'.75em',resize:'none',readOnly:true,userSelect:'text'});
-  var prxyBtnRow=el('div',{display:'flex',gap:'.35em'});
-  var prxyBuild=el('button',{background:'none',border:'1px solid '+P.blue,color:P.blue,borderRadius:'4px',padding:'.25em .65em',cursor:'pointer',fontFamily:'inherit',fontSize:'.75em'},{text:'Build'});
-  prxyBuild.onmouseover=function(){this.style.background=P.blue+'22';};
-  prxyBuild.onmouseout=function(){this.style.background='none';};
-  prxyBuild.onclick=function(){
-    var target=(prxyInput.value||'').trim();
-    if(!target){prxyOutput.value='Error: Enter a target URL';prxyOutput.style.color=P.red;return;}
-    var proxyUrl=prxySel.value+encodeURIComponent(target);
-    prxyOutput.value=proxyUrl;
-    prxyOutput.style.color=P.green;
-  };
-  prxyBtnRow.appendChild(prxyBuild);
-  var prxyCopy=el('button',{background:'none',border:'1px solid '+P.green,color:P.green,borderRadius:'4px',padding:'.25em .65em',cursor:'pointer',fontFamily:'inherit',fontSize:'.75em'},{text:'Copy'});
-  prxyCopy.onmouseover=function(){this.style.background=P.green+'22';};
-  prxyCopy.onmouseout=function(){this.style.background='none';};
-  prxyCopy.onclick=function(){
-    if(prxyOutput.value){
-      navigator.clipboard&&navigator.clipboard.writeText(prxyOutput.value);
-      prxyCopy.textContent='Copied!';
-      setTimeout(function(){prxyCopy.textContent='Copy';},1500);
+  var prxyP=el('div',{display:'none',flex:'1',flexDirection:'column',overflow:'hidden',padding:'0'});
+  var prxyTopBar=el('div',{background:P.mantle,padding:'.45em .85em',display:'flex',alignItems:'center',gap:'.4em',flexShrink:'0',borderBottom:'1px solid '+P.s0});
+  prxyTopBar.appendChild(el('span',{color:P.mauve,fontWeight:'bold',fontSize:'.85em'},{text:'\u269b proxy'}));
+  var prxyBackendSel=el('select',{background:P.base,color:P.tx,border:'1px solid '+P.s0,borderRadius:'4px',padding:'.2em .4em',fontFamily:'inherit',fontSize:'.75em'});
+  var opt1=document.createElement('option');opt1.value='local';opt1.textContent='local';prxyBackendSel.appendChild(opt1);
+  var opt2=document.createElement('option');opt2.value='localhost';opt2.textContent='localhost:8080';prxyBackendSel.appendChild(opt2);
+  var opt3=document.createElement('option');opt3.value='railway';opt3.textContent='railway';prxyBackendSel.appendChild(opt3);
+  prxyTopBar.appendChild(prxyBackendSel);
+  var prxyUrlInput=el('input',{flex:'1',background:P.base,color:P.tx,border:'1px solid '+P.s0,borderRadius:'4px',padding:'.3em .5em',fontFamily:'inherit',fontSize:'.78em'},{placeholder:'Enter URL...'});
+  var prxyGoBtn=el('button',{background:P.mauve,color:P.base,border:'0',borderRadius:'4px',padding:'.25em .75em',cursor:'pointer',fontFamily:'inherit',fontSize:'.78em',fontWeight:'bold'},{text:'Go'});
+  var prxyFrame=el('iframe',{flex:'1',border:'0',background:P.base});
+  prxyFrame.style.width='100%';
+  prxyFrame.style.height='100%';
+  prxyFrame.style.overflow='auto';
+  prxyFrame.allow='clipboard-read; clipboard-write';
+  prxyFrame.src='https://browserfetch.bigguy8014.workers.dev/proxy';
+  prxyGoBtn.onclick=function(){
+    var t=(prxyUrlInput.value||'').trim();
+    if(!t){prxyUrlInput.focus();return;}
+    if(!/^https?:\/\//i.test(t))t='https://'+t;
+    var backend=prxyBackendSel.value;
+    if(backend==='localhost'){
+      prxyFrame.src='http://localhost:8080/#/service/https/'+encodeURIComponent(t);
+    } else if(backend==='railway'){
+      var railwayUrl=localStorage.getItem('uv_railway_url');
+      if(!railwayUrl){railwayUrl=prompt('Enter Railway Ultraviolet URL (e.g., https://your-app.railway.app)');if(!railwayUrl)return;localStorage.setItem('uv_railway_url',railwayUrl);}
+      prxyFrame.src=railwayUrl+'/#/service/https/'+encodeURIComponent(t);
+    } else {
+      prxyFrame.src='https://browserfetch.bigguy8014.workers.dev/proxy?url='+encodeURIComponent(t);
     }
   };
-  prxyBtnRow.appendChild(prxyCopy);
-  prxyP.appendChild(prxyBtnRow);
+  prxyUrlInput.onkeydown=function(e){if(e.key==='Enter')prxyGoBtn.onclick();};
+  prxyTopBar.appendChild(prxyUrlInput);
+  prxyTopBar.appendChild(prxyGoBtn);
+  prxyP.appendChild(prxyTopBar);
+  prxyP.appendChild(prxyFrame);
   panels.pr0xy=prxyP;
 
   /* ASSEMBLE */

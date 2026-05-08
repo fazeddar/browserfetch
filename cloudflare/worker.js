@@ -26,6 +26,74 @@ export default {
       return env.ASSETS.fetch(new Request(assetUrl.toString(), request));
     }
 
+    if (url.pathname === "/proxy" || url.pathname === "/proxy/") {
+      const target = url.searchParams.get("url") || url.searchParams.get("target");
+      const origin = request.headers.get("Origin") || "*";
+
+      if (request.method === "OPTIONS") {
+        return new Response(null, { status: 204, headers: corsHeaders(origin) });
+      }
+
+      if (!target) {
+        return new Response(
+          `<!DOCTYPE html>
+<html><head><meta charset=utf-8><title>Proxy</title><style>
+body{background:#11111b;color:#cdd6f4;font-family:monospace;padding:2em;margin:0}
+.box{background:#1e1e2e;border:1px solid #313244;border-radius:10px;padding:1.5em;max-width:600px;margin:auto}
+input{width:100%;padding:.6em;background:#181825;color:#cdd6f4;border:1px solid #45475a;border-radius:6px;font-family:inherit;font-size:1em;box-sizing:border-box}
+button{margin-top:1em;padding:.6em 1.5em;background:#cba6f7;color:#1e1e2e;border:0;border-radius:6px;cursor:pointer;font-weight:bold}
+button:hover{background:#b4befe}
+</style></head><body>
+<div class=box>
+<h2 style=margin-top:0>Web Proxy</h2>
+<form method=get>
+<input type=text name=url placeholder="Enter URL to proxy..." required>
+<button type=submit>Go</button>
+</form>
+</div>
+</body></html>`,
+          {
+            status: 200,
+            headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders(origin) }
+          }
+        );
+      }
+
+      try {
+        const targetUrl = new URL(target);
+        const resp = await fetch(targetUrl.toString(), {
+          method: request.method,
+          headers: { "User-Agent": "Mozilla/5.0 (browserfetch proxy)" },
+          redirect: "follow"
+        });
+
+        let body = await resp.text();
+        const contentType = resp.headers.get("content-type") || "text/html";
+
+        if (contentType.includes("text/html")) {
+          const proxyBase = new URL(request.url).origin;
+          body = body
+            .replace(/href=["'](?!(?:https?:\/\/|data:|mailto:|#|\/\/))/g, `href="${proxyBase}/proxy?url=${targetUrl.origin}/`)
+            .replace(/src=["'](?!(?:https?:\/\/|data:|#))/g, `src="${proxyBase}/proxy?url=${targetUrl.origin}/`)
+            .replace(/action=["'](?!(?:https?:\/\/|data:))/g, `action="${proxyBase}/proxy?url=${targetUrl.origin}/`);
+        }
+
+        return new Response(body, {
+          status: resp.status,
+          headers: {
+            "Content-Type": contentType,
+            ...corsHeaders(origin)
+          }
+        });
+      } catch (err) {
+        return json(
+          { error: "Proxy request failed", details: String(err && err.message ? err.message : err) },
+          502,
+          origin
+        );
+      }
+    }
+
     if (url.pathname === "/api/generate") {
       const origin = request.headers.get("Origin") || "*";
 
